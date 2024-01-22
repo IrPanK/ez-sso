@@ -9,4 +9,5 @@ func AuthRoutes(app fiber.Router) {
 
 	api.Get("/login", LoginPage)
 	api.Post("/login", HandleLogin)
+	api.Get("/validate", Validate)
 }

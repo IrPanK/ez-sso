@@ -150,6 +150,60 @@ func HandleLogin(ctx *fiber.Ctx) error {
 	)
 }
 
+func Validate(ctx *fiber.Ctx) error {
+	ticketId := ctx.Query("ticket")
+	service := ctx.Query("service")
+	now := time.Now()
+
+	var ticket Ticket
+
+	result := database.DB.Where(&Ticket{Base: database.Base{ID: ticketId}}).First(&ticket)
+
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"code":    fiber.StatusNotFound,
+				"success": false,
+				"content": "",
+				"message": "Ticket Not Found"},
+			)
+		} else {
+			// Other error occurred, handle it accordingly
+			panic(result.Error)
+		}
+	} else {
+		if !now.Before(ticket.ExpiredAt) || ticket.IsExpired || ticket.Status == "BLACKLISTED" {
+			return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"code":    fiber.StatusUnauthorized,
+				"success": false,
+				"content": "",
+				"message": "Ticket Already Expired"},
+			)
+		}
+
+		if ticket.Service != service {
+			return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"code":    fiber.StatusUnauthorized,
+				"success": false,
+				"content": "",
+				"message": "Wrong Ticket"},
+			)
+		}
+	}
+
+	var user = User{Base: database.Base{ID: ticket.UserId}}
+	database.DB.First(&user)
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"code":    fiber.StatusOK,
+		"success": true,
+		"content": fiber.Map{
+			"email": user.Email,
+		},
+		"message": "Success"},
+	)
+}
+
 func verifyIDToken(ctx context.Context, app *firebase.App, idToken string) *auth.Token {
 	client, err := app.Auth(ctx)
 	if err != nil {
