@@ -155,6 +155,15 @@ func Validate(ctx *fiber.Ctx) error {
 	service := ctx.Query("service")
 	now := time.Now()
 
+	if ticketId == "" || service == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"code":    fiber.StatusBadRequest,
+			"success": false,
+			"content": "",
+			"message": "Credential Not Given"},
+		)
+	}
+
 	var ticket Ticket
 
 	result := database.DB.Where(&Ticket{Base: database.Base{ID: ticketId}}).First(&ticket)
