@@ -2,3 +2,7 @@
 .env.*
 
 credential.json
+
+# Ignore air package 
+.air.toml
+tmp
