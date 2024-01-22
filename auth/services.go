@@ -24,7 +24,27 @@ type LoginDTO struct {
 	Id_token string `json:"idToken" form:"idToken"`
 }
 
+// TODO: SECURE TOKEN WITH JWT OR ANYTHING !!!!!
+// TODO: IMPROVE TOKEN SECURITY !!!!!
+
 func LoginPage(ctx *fiber.Ctx) error {
+	token := ctx.Cookies("token")
+
+	if token != "" {
+		now := time.Now()
+
+		service := ctx.Query("service")
+		if service == "" {
+			service = fmt.Sprintf("%s", viper.Get("DEFAULT_SERVICE"))
+		}
+
+		ticket := updateTicketAndCookies(ctx, token, service, now)
+
+		targetRedirect := fmt.Sprintf("%s?ticket=%s", service, ticket.ID)
+
+		return ctx.Redirect(targetRedirect)
+	}
+
 	return ctx.Render("auth/login", fiber.Map{
 		"FIREBASE_API_KEY":             viper.Get("FIREBASE_API_KEY"),
 		"FIREBASE_AUTH_DOMAIN":         viper.Get("FIREBASE_AUTH_DOMAIN"),
@@ -116,10 +136,7 @@ func HandleLogin(ctx *fiber.Ctx) error {
 		service = fmt.Sprintf("%s", viper.Get("DEFAULT_SERVICE"))
 	}
 
-	database.DB.Model(Ticket{}).Where(&Ticket{UserId: user.ID, IsExpired: false, Status: "ACTIVE"}).Updates(Ticket{IsExpired: true, Status: "BLACKLISTED", BlacklistedAt: &now})
-
-	ticket := Ticket{UserId: user.ID, Service: data.Service, IsExpired: false, Status: "ACTIVE", ExpiredAt: now.Add(5 * time.Minute)}
-	database.DB.Create(&ticket)
+	ticket := updateTicketAndCookies(ctx, user.ID, service, now)
 
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
 		"code":    fiber.StatusOK,
@@ -145,4 +162,31 @@ func verifyIDToken(ctx context.Context, app *firebase.App, idToken string) *auth
 	}
 
 	return token
+}
+
+func updateTicketAndCookies(ctx *fiber.Ctx, userId string, service string, now time.Time) Ticket {
+	blacklistAllTicket(userId, now)
+	ticket := createNewTicket(userId, service, now)
+	setNewCookies(ctx, userId, now)
+
+	return ticket
+}
+
+func blacklistAllTicket(userId string, now time.Time) {
+	database.DB.Model(Ticket{}).Where(&Ticket{UserId: userId, IsExpired: false, Status: "ACTIVE"}).Updates(Ticket{IsExpired: true, Status: "BLACKLISTED", BlacklistedAt: &now})
+}
+
+func createNewTicket(userId string, service string, now time.Time) Ticket {
+	ticket := Ticket{UserId: userId, Service: service, IsExpired: false, Status: "ACTIVE", ExpiredAt: now.Add(5 * time.Minute)}
+	database.DB.Create(&ticket)
+
+	return ticket
+}
+
+func setNewCookies(ctx *fiber.Ctx, userId string, now time.Time) {
+	cookie := new(fiber.Cookie)
+	cookie.Name = "token"
+	cookie.Value = userId
+	cookie.Expires = now.Add(24 * time.Hour)
+	ctx.Cookie(cookie)
 }
